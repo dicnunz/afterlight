@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Afterlight</title>
+  <style>
+    :root {
+      --bg: #07090d;
+      --panel: rgba(14, 18, 24, 0.72);
+      --line: rgba(255, 255, 255, 0.09);
+      --text: rgba(245, 247, 250, 0.96);
+      --muted: rgba(245, 247, 250, 0.56);
+      --accent: #8bf2ff;
+      --accent-2: #b998ff;
+      --danger: #ff6b8f;
+      --good: #b9ffcf;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at top, rgba(139, 242, 255, 0.08), transparent 32%),
+        radial-gradient(circle at 80% 20%, rgba(185, 152, 255, 0.08), transparent 26%),
+        linear-gradient(180deg, #090c11 0%, #05070a 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      touch-action: none;
+    }
+
+    .shell {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      isolation: isolate;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: none;
+    }
+
+    .hud {
+      position: absolute;
+      inset: 18px 18px auto 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .brand, .cluster {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .pill {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+    }
+
+    .brand .pill {
+      letter-spacing: 0.22em;
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.92);
+      padding-inline: 14px;
+    }
+
+    .stat {
+      min-width: 88px;
+      display: grid;
+      gap: 2px;
+      padding: 9px 13px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+
+    .stat span {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .stat strong {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .charge {
+      min-width: 148px;
+    }
+
+    .bar {
+      position: relative;
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.09);
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .bar i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 100%;
+      transform-origin: left center;
+      transform: scaleX(1);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 18px rgba(139, 242, 255, 0.45);
+    }
+
+    .message {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      width: min(680px, calc(100% - 32px));
+      padding: 12px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(12, 15, 20, 0.62);
+      backdrop-filter: blur(14px);
+      color: rgba(255,255,255,0.82);
+      font-size: 14px;
+      line-height: 1.45;
+      text-align: center;
+      letter-spacing: 0.01em;
+      box-shadow: var(--shadow);
+      z-index: 2;
+      transition: opacity 300ms ease, transform 300ms ease;
+    }
+
+    .message.hidden {
+      opacity: 0;
+      transform: translateX(-50%) translateY(8px);
+    }
+
+    .footer {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      z-index: 2;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(12, 15, 20, 0.55);
+      backdrop-filter: blur(12px);
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      pointer-events: none;
+      box-shadow: var(--shadow);
+    }
+
+    @media (max-width: 720px) {
+      .hud {
+        inset: 12px 12px auto 12px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .brand, .cluster { justify-content: space-between; }
+      .cluster { gap: 8px; }
+      .stat { flex: 1; min-width: 0; }
+      .message { bottom: 14px; font-size: 13px; }
+      .footer { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <canvas id="game"></canvas>
+
+    <div class="hud">
+      <div class="brand">
+        <div class="pill">AFTERLIGHT</div>
+      </div>
+      <div class="cluster">
+        <div class="stat"><span>Score</span><strong id="score">0</strong></div>
+        <div class="stat"><span>Chain</span><strong id="chain">1.0×</strong></div>
+        <div class="stat charge">
+          <span>Fold</span>
+          <div class="bar"><i id="chargeBar"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="message" id="message">Move to drift. Gather sparks. Click, tap, or press space to fold your trail backward into a blade.</div>
+    <div class="footer">Pointer or touch • Space to fold</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const chainEl = document.getElementById('chain');
+    const chargeBar = document.getElementById('chargeBar');
+    const messageEl = document.getElementById('message');
+
+    let w = 0, h = 0, dpr = 1, time = 0;
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const dist2 = (ax, ay, bx, by) => {
+      const dx = ax - bx;
+      const dy = ay - by;
+      return dx * dx + dy * dy;
+    };
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (!started && !ended) {
+        player.x = w * 0.5;
+        player.y = h * 0.58;
+        player.tx = player.x;
+        player.ty = player.y;
+      }
+      createStars();
+    }
+
+    const player = {
+      x: 0, y: 0, tx: 0, ty: 0, r: 8,
+      vx: 0, vy: 0,
+      pulse: 0,
+      hurt: 0,
+      invuln: 0,
+    };
+
+    let started = false;
+    let ended = false;
+    let hiddenHint = false;
+    let score = 0;
+    let combo = 1;
+    let comboHold = 0;
+    let charge = 1;
+    let spawnClock = 0;
+    let sparkClock = 0;
+    let survivalClock = 0;
+    let flashes = 0;
+
+    const pointer = { x: 0, y: 0, active: false };
+    const keys = new Set();
+    const trail = [];
+    const shards = [];
+    const sparks = [];
+    const particles = [];
+    const folds = [];
+    const stars = [];
+
+    function createStars() {
+      stars.length = 0;
+      const count = Math.max(28, Math.floor((w * h) / 32000));
+      for (let i = 0; i < count; i++) {
+        stars.push({ x: Math.random() * w, y: Math.random() * h, r: rand(0.6, 2.1), a: rand(0.08, 0.24), s: rand(2, 14) });
+      }
+    }
+
+    function reset() {
+      started = false;
+      ended = false;
+      hiddenHint = false;
+      score = 0;
+      combo = 1;
+      comboHold = 0;
+      charge = 1;
+      spawnClock = 0;
+      sparkClock = 0;
+      survivalClock = 0;
+      flashes = 0;
+      trail.length = 0;
+      shards.length = 0;
+      sparks.length = 0;
+      particles.length = 0;
+      folds.length = 0;
+      player.x = w * 0.5;
+      player.y = h * 0.58;
+      player.tx = player.x;
+      player.ty = player.y;
+      player.vx = 0;
+      player.vy = 0;
+      player.hurt = 0;
+      player.invuln = 0;
+      player.pulse = 0;
+      pointer.x = player.x;
+      pointer.y = player.y;
+      pointer.active = false;
+      messageEl.textContent = 'Move to drift. Gather sparks. Click, tap, or press space to fold your trail backward into a blade.';
+      messageEl.classList.remove('hidden');
+      for (let i = 0; i < 5; i++) spawnSpark(true);
+      syncHud();
+    }
+
+    function syncHud() {
+      scoreEl.textContent = Math.floor(score).toLocaleString();
+      chainEl.textContent = combo.toFixed(1) + '×';
+      chargeBar.style.transform = `scaleX(${clamp(charge, 0, 1)})`;
+    }
+
+    function spawnSpark(initial = false) {
+      const pad = 70;
+      sparks.push({
+        x: rand(pad, w - pad),
+        y: rand(pad, h - pad),
+        r: rand(4.5, 7),
+        phase: Math.random() * Math.PI * 2,
+        life: initial ? rand(12, 18) : rand(8, 15),
+      });
+    }
+
+    function spawnShard() {
+      const edge = (Math.random() * 4) | 0;
+      let x = 0, y = 0;
+      if (edge === 0) { x = rand(-40, w + 40); y = -28; }
+      if (edge === 1) { x = w + 28; y = rand(-40, h + 40); }
+      if (edge === 2) { x = rand(-40, w + 40); y = h + 28; }
+      if (edge === 3) { x = -28; y = rand(-40, h + 40); }
+      const speed = rand(44, 72) + Math.min(90, score * 0.018);
+      shards.push({
+        x, y,
+        vx: 0,
+        vy: 0,
+        speed,
+        r: rand(8, 15),
+        spin: rand(-2.2, 2.2),
+        angle: Math.random() * Math.PI * 2,
+        tint: pick(['cyan', 'violet', 'rose']),
+      });
+    }
+
+    function burst(x, y, amount, hue = 'accent') {
+      for (let i = 0; i < amount; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = rand(20, 180);
+        particles.push({
+          x, y,
+          vx: Math.cos(a) * s,
+          vy: Math.sin(a) * s,
+          life: rand(0.25, 0.8),
+          maxLife: rand(0.25, 0.8),
+          r: rand(1.2, 4.4),
+          hue,
+        });
+      }
+    }
+
+    function begin() {
+      if (ended) return;
+      started = true;
+      if (!hiddenHint) {
+        hiddenHint = true;
+        setTimeout(() => messageEl.classList.add('hidden'), 1200);
+      }
+    }
+
+    function triggerFold() {
+      if (ended) {
+        reset();
+        return;
+      }
+      begin();
+      if (charge < 0.999 || trail.length < 12) return;
+      charge = 0;
+      player.invuln = 0.75;
+      player.pulse = 1;
+      flashes = 0.9;
+      folds.push({ points: trail.slice(), life: 0.82, maxLife: 0.82 });
+      burst(player.x, player.y, 18, 'fold');
+      syncHud();
+    }
+
+    function endGame() {
+      ended = true;
+      started = false;
+      messageEl.textContent = 'Run broken. Click, tap, or press space to restart.';
+      messageEl.classList.remove('hidden');
+      burst(player.x, player.y, 26, 'danger');
+    }
+
+    function setPointer(x, y) {
+      pointer.x = x;
+      pointer.y = y;
+      pointer.active = true;
+      player.tx = x;
+      player.ty = y;
+      begin();
+    }
+
+    window.addEventListener('resize', resize);
+    window.addEventListener('pointermove', (e) => setPointer(e.clientX, e.clientY), { passive: true });
+    window.addEventListener('pointerdown', (e) => {
+      setPointer(e.clientX, e.clientY);
+      triggerFold();
+    });
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      keys.add(key);
+      if (key === ' ') {
+        e.preventDefault();
+        triggerFold();
+      }
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) begin();
+    });
+    window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => keys.clear());
+
+    function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy || 1;
+      const t = clamp(((px - ax) * dx + (py - ay) * dy) / len2, 0, 1);
+      const x = ax + dx * t;
+      const y = ay + dy * t;
+      return Math.hypot(px - x, py - y);
+    }
+
+    function destroyShard(index, bonus = 18) {
+      const s = shards[index];
+      if (!s) return;
+      burst(s.x, s.y, 10, s.tint === 'rose' ? 'danger' : s.tint === 'violet' ? 'violet' : 'accent');
+      score += bonus * combo;
+      combo = clamp(combo + 0.16, 1, 4.5);
+      comboHold = 1.45;
+      shards.splice(index, 1);
+      syncHud();
+    }
+
+    function update(dt) {
+      time += dt;
+      player.pulse = Math.max(0, player.pulse - dt * 1.8);
+      player.hurt = Math.max(0, player.hurt - dt * 2.4);
+      player.invuln = Math.max(0, player.invuln - dt);
+      flashes = Math.max(0, flashes - dt * 1.7);
+
+      if (comboHold > 0) comboHold -= dt;
+      else combo = lerp(combo, 1, dt * 1.8);
+
+      const keyboardX = (keys.has('arrowright') || keys.has('d') ? 1 : 0) - (keys.has('arrowleft') || keys.has('a') ? 1 : 0);
+      const keyboardY = (keys.has('arrowdown') || keys.has('s') ? 1 : 0) - (keys.has('arrowup') || keys.has('w') ? 1 : 0);
+
+      if (Math.abs(keyboardX) + Math.abs(keyboardY) > 0) {
+        pointer.active = false;
+        player.vx += keyboardX * 1400 * dt;
+        player.vy += keyboardY * 1400 * dt;
+      } else {
+        player.vx *= Math.pow(0.0001, dt);
+        player.vy *= Math.pow(0.0001, dt);
+      }
+
+      player.vx *= Math.pow(0.018, dt);
+      player.vy *= Math.pow(0.018, dt);
+
+      if (pointer.active) {
+        player.x = lerp(player.x, pointer.x, 1 - Math.pow(0.0015, dt));
+        player.y = lerp(player.y, pointer.y, 1 - Math.pow(0.0015, dt));
+      } else {
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
+      }
+
+      player.x = clamp(player.x, 24, w - 24);
+      player.y = clamp(player.y, 24, h - 24);
+
+      trail.push({ x: player.x, y: player.y });
+      if (trail.length > 80) trail.shift();
+
+      if (!ended) {
+        charge = clamp(charge + dt * 0.11, 0, 1);
+        survivalClock += dt;
+        if (survivalClock > 0.25 && started) {
+          score += 2.2 * combo;
+          survivalClock = 0;
+        }
+
+        if (started) {
+          spawnClock += dt;
+          sparkClock += dt;
+          const spawnEvery = Math.max(0.35, 1.08 - Math.min(0.58, score * 0.00006));
+          if (spawnClock >= spawnEvery) {
+            spawnClock = 0;
+            spawnShard();
+          }
+          if (sparkClock >= 1.9 && sparks.length < 6) {
+            sparkClock = 0;
+            spawnSpark();
+          }
+        }
+      }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.phase += dt * 2.6;
+        s.life -= dt;
+        if (s.life <= 0) {
+          sparks.splice(i, 1);
+          continue;
+        }
+        if (dist2(s.x, s.y, player.x, player.y) < (player.r + s.r + 10) ** 2) {
+          score += 16 * combo;
+          charge = clamp(charge + 0.24, 0, 1);
+          comboHold = 1.2;
+          burst(s.x, s.y, 8, 'spark');
+          sparks.splice(i, 1);
+          syncHud();
+        }
+      }
+
+      for (let i = folds.length - 1; i >= 0; i--) {
+        const f = folds[i];
+        f.life -= dt;
+        const progress = 1 - clamp(f.life / f.maxLife, 0, 1);
+        f.head = Math.floor((1 - progress) * (f.points.length - 1));
+        if (f.life <= 0) folds.splice(i, 1);
+      }
+
+      for (let i = shards.length - 1; i >= 0; i--) {
+        const s = shards[i];
+        const dx = player.x - s.x;
+        const dy = player.y - s.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const sway = Math.sin(time * 2.3 + s.angle) * 24;
+        const nx = -dy / d;
+        const ny = dx / d;
+        const tx = dx / d + nx * sway * 0.004;
+        const ty = dy / d + ny * sway * 0.004;
+        s.vx = lerp(s.vx, tx * s.speed, 1 - Math.pow(0.05, dt));
+        s.vy = lerp(s.vy, ty * s.speed, 1 - Math.pow(0.05, dt));
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.angle += s.spin * dt;
+
+        let slain = false;
+        for (let f = 0; f < folds.length && !slain; f++) {
+          const fold = folds[f];
+          const from = clamp(fold.head, 0, fold.points.length - 2);
+          const thickness = 14 + (1 - fold.life / fold.maxLife) * 5;
+          for (let j = from; j < fold.points.length - 1; j++) {
+            const a = fold.points[j];
+            const b = fold.points[j + 1];
+            if (pointToSegmentDistance(s.x, s.y, a.x, a.y, b.x, b.y) < s.r + thickness) {
+              destroyShard(i, 22);
+              slain = true;
+              break;
+            }
+          }
+        }
+        if (slain) continue;
+
+        if (!ended && player.invuln <= 0 && dist2(s.x, s.y, player.x, player.y) < (s.r + player.r + 4) ** 2) {
+          player.hurt = 1;
+          endGame();
+          break;
+        }
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(0.06, dt);
+        p.vy *= Math.pow(0.06, dt);
+      }
+
+      syncHud();
+    }
+
+    function drawGrid() {
+      const gap = Math.max(48, Math.min(82, Math.floor(Math.min(w, h) / 11)));
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+      ctx.lineWidth = 1;
+      const ox = (time * 8) % gap;
+      const oy = (time * 4) % gap;
+      for (let x = -gap; x < w + gap; x += gap) {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, 0);
+        ctx.lineTo(x + ox, h);
+        ctx.stroke();
+      }
+      for (let y = -gap; y < h + gap; y += gap) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + oy);
+        ctx.lineTo(w, y + oy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawStars() {
+      for (const s of stars) {
+        const y = (s.y + time * s.s) % (h + 20) - 10;
+        ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+        ctx.beginPath();
+        ctx.arc(s.x, y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawTrail() {
+      if (trail.length < 2) return;
+      ctx.save();
+      const g = ctx.createLinearGradient(player.x - 120, player.y - 120, player.x + 120, player.y + 120);
+      g.addColorStop(0, 'rgba(185, 152, 255, 0.08)');
+      g.addColorStop(1, 'rgba(139, 242, 255, 0.44)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFolds() {
+      for (const f of folds) {
+        const active = clamp(f.life / f.maxLife, 0, 1);
+        const from = clamp(f.head, 0, f.points.length - 2);
+        if (f.points.length < 2) continue;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.strokeStyle = `rgba(139, 242, 255, ${0.28 + (1 - active) * 0.22})`;
+        ctx.lineWidth = 16 + (1 - active) * 5;
+        ctx.shadowBlur = 32;
+        ctx.shadowColor = 'rgba(139, 242, 255, 0.65)';
+        ctx.beginPath();
+        ctx.moveTo(f.points[from].x, f.points[from].y);
+        for (let i = from + 1; i < f.points.length; i++) ctx.lineTo(f.points[i].x, f.points[i].y);
+        ctx.stroke();
+
+        const head = f.points[from];
+        const rg = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, 42);
+        rg.addColorStop(0, 'rgba(255,255,255,0.95)');
+        rg.addColorStop(0.3, 'rgba(139,242,255,0.65)');
+        rg.addColorStop(1, 'rgba(139,242,255,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, 42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawSparks() {
+      for (const s of sparks) {
+        const bob = Math.sin(s.phase) * 4;
+        const x = s.x;
+        const y = s.y + bob;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(time + s.phase * 0.5);
+        const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, s.r * 3);
+        rg.addColorStop(0, 'rgba(255,255,255,0.95)');
+        rg.addColorStop(0.25, 'rgba(185,255,207,0.9)');
+        rg.addColorStop(1, 'rgba(185,255,207,0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(0, 0, s.r * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-s.r * 1.8, 0);
+        ctx.lineTo(s.r * 1.8, 0);
+        ctx.moveTo(0, -s.r * 1.8);
+        ctx.lineTo(0, s.r * 1.8);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawShards() {
+      for (const s of shards) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(Math.atan2(s.vy, s.vx) + s.angle * 0.35);
+        const tint = s.tint === 'violet'
+          ? ['rgba(185,152,255,0.9)', 'rgba(185,152,255,0.06)']
+          : s.tint === 'rose'
+          ? ['rgba(255,107,143,0.88)', 'rgba(255,107,143,0.06)']
+          : ['rgba(139,242,255,0.9)', 'rgba(139,242,255,0.06)'];
+        const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, s.r * 2.6);
+        rg.addColorStop(0, tint[0]);
+        rg.addColorStop(1, tint[1]);
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(0, 0, s.r * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(s.r * 1.25, 0);
+        ctx.lineTo(0, s.r * 0.7);
+        ctx.lineTo(-s.r * 1.1, 0);
+        ctx.lineTo(0, -s.r * 0.7);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fill();
+        ctx.strokeStyle = tint[0];
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        const alpha = clamp(p.life / p.maxLife, 0, 1);
+        const color = p.hue === 'danger'
+          ? `rgba(255,107,143,${alpha * 0.8})`
+          : p.hue === 'violet'
+          ? `rgba(185,152,255,${alpha * 0.8})`
+          : p.hue === 'spark'
+          ? `rgba(185,255,207,${alpha * 0.8})`
+          : `rgba(139,242,255,${alpha * 0.8})`;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawPlayer() {
+      ctx.save();
+      const glow = 22 + player.pulse * 30;
+      const rg = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, glow);
+      rg.addColorStop(0, player.hurt > 0 ? 'rgba(255,140,160,1)' : 'rgba(255,255,255,1)');
+      rg.addColorStop(0.24, player.hurt > 0 ? 'rgba(255,107,143,0.85)' : 'rgba(139,242,255,0.85)');
+      rg.addColorStop(1, 'rgba(139,242,255,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, glow, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r + player.pulse * 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(245,247,250,0.98)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, 14 + Math.sin(time * 4) * 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${0.18 + player.invuln * 0.4})`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFrame() {
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = '#05070a';
+      ctx.fillRect(0, 0, w, h);
+
+      drawStars();
+      drawGrid();
+      drawTrail();
+      drawFolds();
+      drawSparks();
+      drawShards();
+      drawParticles();
+      drawPlayer();
+
+      const vignette = ctx.createRadialGradient(w * 0.5, h * 0.45, Math.min(w, h) * 0.15, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.48)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, w, h);
+
+      if (flashes > 0) {
+        ctx.fillStyle = `rgba(210,245,255,${flashes * 0.08})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+    }
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+      update(dt);
+      drawFrame();
+      requestAnimationFrame(frame);
+    }
+
+    resize();
+    reset();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
